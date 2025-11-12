@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  frontend:
+    build: ./frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`frontend.local`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=authdb
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`backend.local`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=5000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: authdb
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d authdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+volumes:
+  db_data:
+
